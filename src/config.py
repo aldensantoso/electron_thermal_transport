@@ -1,3 +1,8 @@
+'''
+all the path definitions are here
+all the column names are here, maps different variable names throughout the project to its proper names
+'''
+
 from pathlib import Path
 
 PROJECT_ROOT = Path("/Users/aldensantoso/Documents/plasma_research/ML Project").resolve()

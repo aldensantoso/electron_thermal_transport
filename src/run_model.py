@@ -1,3 +1,11 @@
+'''
+this is the file that actually runs KMeans
+computes silhouette score 
+fits RandomForest to predict ETAU
+ creates the PCA visualizations
+\rTODO: overhaul the canonical cluster features into the controlled and mode properties frameworks, or create multiple plots each with the different variables
+'''
+
 import os
 import numpy as np
 import pandas as pd

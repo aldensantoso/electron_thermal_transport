@@ -1,3 +1,19 @@
+"""
+Preprocessing pipeline for plasma confinement data.
+
+This module:
+- loads and validates raw plasma datasets
+- resolves common column aliases and canonical feature names
+- enforces physics-based sanity checks (e.g. tau_e > 0, n_e > 0)
+- removes missing and non-finite values
+- trims extreme outliers (1%-99%) and also using z-score filtering
+- creates canonical clustering features
+- computes PCA/KMeans projections for exploratory analysis
+- provides plotting utilities for distributions, correlations, and clusters
+\rTODO: safely remove the engineered features, overhaul the canonical cluster features into the controlled and mode properties frameworks
+"""
+
+
 import os
 import numpy as np
 import pandas as pd

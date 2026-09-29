@@ -1,3 +1,11 @@
+'''
+converts the data into csv from .SAV files
+merges dataset from the 2 csvs into 1 csv
+not the whole cleaning pipeline yet, just removing the rows
+\rTODO: add the rest of the cleaning pipeline
+'''
+
+
 import os
 import pandas as pd
 import numpy as np

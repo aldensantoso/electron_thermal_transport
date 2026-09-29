@@ -1,3 +1,10 @@
+'''
+trains pipeline using RandomForest to determine feature importance
+train/test split is 80/20
+features are standardized
+\rTODO: branch off into analyzing the controlled variables and the mode properties variables in parallel to analyze ETAU
+'''
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split

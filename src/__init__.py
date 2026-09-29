@@ -1,3 +1,9 @@
+'''
+streamlines the project so it is easier to run
+allows for easier importing and keeps track of all important functions
+'''
+
+
 try:
     from .config import PROJECT_ROOT, SAV_PATH, CSV_PATH, COLUMN_MAPPING
 except ImportError:
