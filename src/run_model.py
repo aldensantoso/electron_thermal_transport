@@ -42,6 +42,7 @@ def load_and_prepare_data(csv_path=CSV_PATH):
     if target_col is None:
         raise ValueError("No ETAU / tau_e column found in the dataframe.")
 
+    # Raw physical variables only; no engineered features
     cluster_vars = [
         "BZXR",
         "PBEAM_A",
@@ -65,14 +66,6 @@ def load_and_prepare_data(csv_path=CSV_PATH):
 
     low, high = work[target_col].quantile(0.01), work[target_col].quantile(0.99)
     work = work[(work[target_col] >= low) & (work[target_col] <= high)].copy()
-
-    corr = work[feature_cols + [target_col]].corr(method="spearman")
-    rho = corr[target_col].drop(target_col).abs()
-    feature_cols = rho[rho > 0.05].index.tolist()
-
-    if not feature_cols:
-        feature_cols = cluster_vars[: min(5, len(cluster_vars))]
-        print("No variable exceeded |rho| > 0.05; using top available subset instead.")
 
     return work, target_col, feature_cols
 

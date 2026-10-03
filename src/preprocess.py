@@ -45,7 +45,7 @@ def _resolve_alias_columns(df, col_map):
     return df
 
 
-def load_and_prep_data(filepath, col_map):
+def load_and_prep_data(filepath, col_map, feature_cols=None):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Data file not found at: {filepath}")
 
@@ -54,10 +54,30 @@ def load_and_prep_data(filepath, col_map):
 
     df = _resolve_alias_columns(df, col_map)
 
-    required = ["P_beam", "B_T", "I_P", "n_e", "f", "n", "dB", "tau_e"]
-    missing = [c for c in required if c not in df.columns]
+    # basic target validity, independent of the feature list
+    target_col = find_target_column(df)
+    if target_col is None:
+        raise KeyError("No ETAU/tau_e target column found after alias resolution.")
+
+    # default fallback list if the notebook does not pass one
+    if feature_cols is None:
+        feature_cols = [
+            "BZXR",
+            "PBEAM_A",
+            "PBEAM_B",
+            "PBEAM_C",
+            "PBEAM_TOT",
+            "PTRANSP",
+            "NES",
+        ]
+
+    # enforce only the selected feature columns and target if they exist
+    missing = [c for c in feature_cols + [target_col] if c not in df.columns]
     if missing:
-        raise KeyError(f"Missing mapped columns after rename: {missing}")
+        raise KeyError(
+            f"Missing required columns after rename: {missing}. "
+            f"Available columns: {list(df.columns)}"
+        )
 
     # coerce to numeric before filtering
     for c in df.columns:
@@ -65,16 +85,22 @@ def load_and_prep_data(filepath, col_map):
 
     df = df.replace([np.inf, -np.inf], np.nan)
 
-    # physical cuts
-    df = df[(df["tau_e"] > 0) & (df["n_e"] > 0)].copy()
+    # physical cuts for the target
+    df = df[(df[target_col] > 0)].copy()
 
-    # drop missing values in the required fields
-    df = df.dropna(subset=required).copy()
+    # filter rows using only the selected features if they are numeric
+    selected_numeric = [
+        c for c in feature_cols
+        if c in df.columns and pd.api.types.is_numeric_dtype(df[c])
+    ]
 
-    # z-score filter on selected raw variables
-    var_cols = [c for c in required if c in df.columns and df[c].nunique() > 1]
-    if var_cols:
-        z_scores = np.abs(stats.zscore(df[var_cols].astype(float)))
+    if selected_numeric:
+        df = df.dropna(subset=selected_numeric + [target_col]).copy()
+
+    # z-score filter on the selected features only
+    z_cols = [c for c in selected_numeric if df[c].nunique() > 1]
+    if z_cols:
+        z_scores = np.abs(stats.zscore(df[z_cols].astype(float)))
         df = df[(z_scores < 3).all(axis=1)].copy()
 
     return df.reset_index(drop=True)
@@ -82,8 +108,22 @@ def load_and_prep_data(filepath, col_map):
     return df
 
 def canonical_cluster_features(df):
-    feature_cols = ["P_beam", "B_T", "I_P", "n_e", "f", "n", "dB"]
-    return [c for c in feature_cols if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+    # Keep only raw physical variables; no engineered features
+    raw_feature_candidates = [
+        'BZXR',
+        'PBEAM_A',
+        'PBEAM_B',
+        'PBEAM_C',
+        'PBEAM_TOT',
+        'NES',
+        'ETAU'
+    ]
+
+    feature_cols = [
+        c for c in raw_feature_candidates
+        if c in df.columns and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    return feature_cols
 
 def compute_cluster_projection(df, feature_cols=None, n_clusters=4):
     if feature_cols is None:
@@ -164,17 +204,19 @@ def plot_distributions(df, columns=None, title="Variable Distributions"):
     return plot_variable_distributions(df, columns=columns, title=title)
 
 def engineer_features(df):
-    X_cols = [c for c in ["P_beam", "B_T", "I_P", "n_e", "f", "n", "dB"] if c in df.columns]
-    numeric_cols = [
-        c for c in df.columns
-        if c not in X_cols and pd.api.types.is_numeric_dtype(df[c])
-    ]
+    target_col = find_target_column(df)
+    if target_col is None:
+        raise ValueError("No valid ETAU / tau_e target column found.")
 
-    Y_target_col = "tau_e" if "tau_e" in df.columns else None
-    if Y_target_col is None:
-        Y_target_col = next((c for c in numeric_cols if "tau" in c.lower()), numeric_cols[0])
+    feature_cols = canonical_cluster_features(df)
+    if not feature_cols:
+        raise ValueError("No raw numeric feature columns available for modeling.")
 
-    Y_wave_cols = [c for c in numeric_cols if c != Y_target_col]
+    # Remove target if any raw feature accidentally matches it
+    feature_cols = [c for c in feature_cols if c != target_col]
 
-    feat_df = df[X_cols + [Y_target_col] + Y_wave_cols].copy()
-    return feat_df, X_cols, Y_wave_cols, Y_target_col
+    work = df[feature_cols + [target_col]].copy()
+    work = work.replace([np.inf, -np.inf], np.nan).dropna()
+    work = work[work[target_col] > 0].copy()
+
+    return work, feature_cols, target_col
