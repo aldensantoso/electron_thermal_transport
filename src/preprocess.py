@@ -45,67 +45,37 @@ def _resolve_alias_columns(df, col_map):
     return df
 
 
-def load_and_prep_data(filepath, col_map, feature_cols=None):
+def load_and_prep_data(filepath, col_map=None, feature_cols=None):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Data file not found at: {filepath}")
 
     df = pd.read_csv(filepath)
     df.columns = df.columns.str.strip().str.replace("\ufeff", "")
 
-    df = _resolve_alias_columns(df, col_map)
+    # allow the notebook to pass the actual feature names directly
+    if feature_cols is not None:
+        missing = [c for c in feature_cols if c not in df.columns]
+        if missing:
+            raise KeyError(
+                f"Missing requested feature columns: {missing}. "
+                f"Available columns: {list(df.columns)}"
+            )
 
-    # basic target validity, independent of the feature list
-    target_col = find_target_column(df)
+    target_candidates = ["tau_e", "etau", "taue", "eta_u"]
+    target_col = next(
+        (c for c in df.columns if str(c).strip().lower() in {str(x).lower() for x in target_candidates}),
+        None,
+    )
     if target_col is None:
-        raise KeyError("No ETAU/tau_e target column found after alias resolution.")
+        raise KeyError(f"No target column found. Available columns: {list(df.columns)}")
 
-    # default fallback list if the notebook does not pass one
-    if feature_cols is None:
-        feature_cols = [
-            "BZXR",
-            "PBEAM_A",
-            "PBEAM_B",
-            "PBEAM_C",
-            "PBEAM_TOT",
-            "PTRANSP",
-            "NES",
-        ]
+    if feature_cols is not None:
+        df = df[feature_cols + [target_col]].copy()
 
-    # enforce only the selected feature columns and target if they exist
-    missing = [c for c in feature_cols + [target_col] if c not in df.columns]
-    if missing:
-        raise KeyError(
-            f"Missing required columns after rename: {missing}. "
-            f"Available columns: {list(df.columns)}"
-        )
-
-    # coerce to numeric before filtering
-    for c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    df = df.replace([np.inf, -np.inf], np.nan)
-
-    # physical cuts for the target
-    df = df[(df[target_col] > 0)].copy()
-
-    # filter rows using only the selected features if they are numeric
-    selected_numeric = [
-        c for c in feature_cols
-        if c in df.columns and pd.api.types.is_numeric_dtype(df[c])
-    ]
-
-    if selected_numeric:
-        df = df.dropna(subset=selected_numeric + [target_col]).copy()
-
-    # z-score filter on the selected features only
-    z_cols = [c for c in selected_numeric if df[c].nunique() > 1]
-    if z_cols:
-        z_scores = np.abs(stats.zscore(df[z_cols].astype(float)))
-        df = df[(z_scores < 3).all(axis=1)].copy()
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+    df = df[df[target_col] > 0].copy()
 
     return df.reset_index(drop=True)
-
-    return df
 
 def canonical_cluster_features(df):
     # Keep only raw physical variables; no engineered features
