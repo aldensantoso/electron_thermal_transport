@@ -1,18 +1,10 @@
-'''
-this is the file that actually runs KMeans
-computes silhouette score 
-fits RandomForest to predict ETAU
- creates the PCA visualizations
-\rTODO: overhaul the canonical cluster features into the controlled and mode properties frameworks, or create multiple plots each with the different variables
-'''
-
 import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -31,41 +23,41 @@ def find_target_col(df):
             return match
     return None
 
-def load_and_prepare_data(csv_path=CSV_PATH):
+def load_and_prepare_data(csv_path=CSV_PATH, feature_cols=None, target_col=None):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
     df = pd.read_csv(csv_path)
     df.columns = df.columns.str.strip().str.replace("\ufeff", "")
 
-    target_col = find_target_col(df)
     if target_col is None:
-        raise ValueError("No ETAU / tau_e column found in the dataframe.")
+        target_col = "ETAU"
+        if target_col not in df.columns:
+            target_col = "tau_e"
+        if target_col not in df.columns:
+            target_col = find_target_col(df)
 
-    # Raw physical variables only; no engineered features
-    cluster_vars = [
-        "BZXR",
-        "PBEAM_A",
-        "PBEAM_B",
-        "PBEAM_C",
-        "PBEAM_TOT",
-        "PTRANSP",
-        "NES",
-    ]
+    if target_col is None or target_col not in df.columns:
+        raise ValueError(f"No ETAU / tau_e target column found. Available columns: {list(df.columns)}")
 
-    feature_cols = [
-        c for c in cluster_vars
-        if c in df.columns and pd.api.types.is_numeric_dtype(df[c])
-    ]
-    if not feature_cols:
-        raise ValueError("None of the requested cluster variables were found as numeric columns.")
+    if feature_cols is None:
+        feature_cols = [
+            "BZXR",
+            "PBEAM_A",
+            "PBEAM_B",
+            "PBEAM_C",
+            "PBEAM_TOT",
+            "PTRANSP",
+            "NES",
+        ]
+
+    missing = [c for c in feature_cols if c not in df.columns]
+    if missing:
+        raise KeyError(f"Missing feature columns: {missing}")
 
     work = df[feature_cols + [target_col]].copy()
     work = work.replace([np.inf, -np.inf], np.nan).dropna()
-    work = work[work[target_col] > 0].copy()
-
-    low, high = work[target_col].quantile(0.01), work[target_col].quantile(0.99)
-    work = work[(work[target_col] >= low) & (work[target_col] <= high)].copy()
+    work = work[work[target_col].notna() & (work[target_col] > 0)].copy()
 
     return work, target_col, feature_cols
 
@@ -79,14 +71,28 @@ def _cluster_summary_table(work, target_col, selected_features):
     )
     return cluster_summary
 
-def run_analysis():
-    work, target_col, selected_features = load_and_prepare_data()
+def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH, n_clusters=4):
+    if feature_cols is None:
+        feature_cols = [
+            "BZXR",
+            "PBEAM_A",
+            "PBEAM_B",
+            "PBEAM_C",
+            "PBEAM_TOT",
+            "PTRANSP",
+            "NES",
+        ]
+
+    work, target_col, selected_features = load_and_prepare_data(
+        csv_path=csv_path,
+        feature_cols=feature_cols,
+        target_col="ETAU",
+    )
 
     X = work[selected_features].copy()
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    n_clusters = 4
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=25)
     work["Cluster_Label"] = kmeans.fit_predict(X_scaled)
 
@@ -94,6 +100,8 @@ def run_analysis():
     cluster_counts = work["Cluster_Label"].value_counts().sort_index()
 
     print("================ CLUSTERING SANITY CHECK ================")
+    print(f"Regime: {regime_name}")
+    print(f"Features used: {selected_features}")
     print(f"Silhouette Score: {sil_score:.3f}")
     if sil_score > 0.5:
         print(" -> Assessment: Strong, well-separated cluster structure.")
@@ -112,17 +120,18 @@ def run_analysis():
     print("\n--- Cluster Means ---")
     print(cluster_summary.to_string())
 
+    # Plot 1: target by cluster
     if target_col in work.columns:
         plt.figure(figsize=(9, 4.5))
         sns.boxplot(data=work, x="Cluster_Label", y=target_col, palette="viridis")
         sns.stripplot(data=work, x="Cluster_Label", y=target_col, color="black", alpha=0.15, size=2)
-        plt.title(f"{target_col} Distribution by Cluster")
+        plt.title(f"{regime_name}: {target_col} Distribution by Cluster")
         plt.xlabel("Cluster Label")
         plt.ylabel(target_col)
         plt.tight_layout()
         plt.show()
 
-    # Predict ETAU using cluster label + original features
+    # Plot 2: RF prediction of target
     if target_col in work.columns:
         X_model = work[selected_features + ["Cluster_Label"]].copy()
         y_model = work[target_col].astype(float)
@@ -144,8 +153,8 @@ def run_analysis():
         eta_r2 = r2_score(y_test, y_pred)
         eta_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
-        print(f"\nETAU prediction using KMeans clusters: R^2 = {eta_r2:.3f}")
-        print(f"ETAU prediction using KMeans clusters: RMSE = {eta_rmse:.3f}")
+        print(f"\n{target_col} prediction using KMeans clusters: R^2 = {eta_r2:.3f}")
+        print(f"{target_col} prediction using KMeans clusters: RMSE = {eta_rmse:.3f}")
 
         plt.figure(figsize=(7, 6))
         plt.scatter(y_test, y_pred, s=40, alpha=0.7, color="tab:blue")
@@ -154,7 +163,7 @@ def run_analysis():
         plt.plot([min_v, max_v], [min_v, max_v], "r--", lw=1.5, label="1:1 line")
         plt.xlabel(f"Actual {target_col}")
         plt.ylabel(f"Predicted {target_col}")
-        plt.title(f"{target_col} predicted vs actual using KMeans cluster labels")
+        plt.title(f"{regime_name}: {target_col} predicted vs actual")
         plt.grid(alpha=0.25)
         plt.legend()
         plt.text(
@@ -168,7 +177,7 @@ def run_analysis():
         plt.tight_layout()
         plt.show()
 
-    # 2D PCA view of cluster space
+    # Plot 3: PCA cluster map
     pca = PCA(n_components=2)
     pca_coords = pca.fit_transform(X_scaled)
     var1, var2 = pca.explained_variance_ratio_ * 100
@@ -190,17 +199,14 @@ def run_analysis():
         label="Centroid",
     )
 
-    plt.title(f"2D PCA View of Operating Space (Variance Preserved: {total_var:.1f}%)")
+    plt.title(f"{regime_name}: 2D PCA View of Operating Space ({total_var:.1f}% variance preserved)")
     plt.xlabel(f"PC 1 ({var1:.1f}% Variance)")
     plt.ylabel(f"PC 2 ({var2:.1f}% Variance)")
     plt.legend()
     plt.tight_layout()
     plt.show()
 
-    print(f"Features used: {selected_features}")
-    print(f"Total rows clustered: {len(work)}")
-
-    # PCA component table exactly like the notebook
+    # PCA loadings table
     pca_table = pd.DataFrame(
         pca.components_,
         columns=selected_features,
@@ -210,6 +216,7 @@ def run_analysis():
     print(pca_table.to_string())
 
     report = {
+        "regime_name": regime_name,
         "target_col": target_col,
         "selected_features": selected_features,
         "n_clusters": n_clusters,
@@ -223,4 +230,5 @@ def run_analysis():
         "cluster_summary": cluster_summary,
         "target_col": target_col,
         "selected_features": selected_features,
+        "cluster_labels": work["Cluster_Label"].values,
     }
