@@ -59,6 +59,10 @@ def load_and_prepare_data(csv_path=CSV_PATH, feature_cols=None, target_col=None)
     work = work.replace([np.inf, -np.inf], np.nan).dropna()
     work = work[work[target_col].notna() & (work[target_col] > 0)].copy()
 
+    # Remove extreme target outliers: 1st to 99th percentile
+    low, high = work[target_col].quantile(0.01), work[target_col].quantile(0.99)
+    work = work[(work[target_col] >= low) & (work[target_col] <= high)].copy()
+
     return work, target_col, feature_cols
 
 def _cluster_summary_table(work, target_col, selected_features):
