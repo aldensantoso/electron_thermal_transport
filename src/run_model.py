@@ -181,32 +181,49 @@ def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH,
         plt.tight_layout()
         plt.show()
 
-    # Plot 3: PCA cluster map
-    pca = PCA(n_components=2)
+    # PCA visualizations: pairwise 2D plots + PC3 as color
+    pca = PCA(n_components=3)
     pca_coords = pca.fit_transform(X_scaled)
-    var1, var2 = pca.explained_variance_ratio_ * 100
-    total_var = var1 + var2
+    explained = pca.explained_variance_ratio_ * 100
+    total_var = explained.sum()
 
-    plt.figure(figsize=(8, 5))
-    for cl in sorted(work["Cluster_Label"].unique()):
-        mask = (work["Cluster_Label"] == cl).values
-        plt.scatter(pca_coords[mask, 0], pca_coords[mask, 1], s=30, alpha=0.7, label=f"Cluster {cl}")
+    # Pairwise PCA scatter plots: PC1-PC2, PC1-PC3, PC2-PC3
+    pairings = [(0, 1), (0, 2), (1, 2)]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    for ax, (i, j) in zip(axes, pairings):
+        for cl in sorted(work["Cluster_Label"].unique()):
+            mask = (work["Cluster_Label"] == cl).values
+            ax.scatter(
+                pca_coords[mask, i],
+                pca_coords[mask, j],
+                s=30,
+                alpha=0.7,
+                label=f"Cluster {cl}",
+            )
+        ax.set_xlabel(f"PC {i + 1} ({explained[i]:.1f}% var)")
+        ax.set_ylabel(f"PC {j + 1} ({explained[j]:.1f}% var)")
+        ax.set_title(f"PCA {i + 1} vs PCA {j + 1}")
+        ax.grid(alpha=0.2)
 
-    centroids_pca = pca.transform(kmeans.cluster_centers_)
-    plt.scatter(
-        centroids_pca[:, 0],
-        centroids_pca[:, 1],
-        s=180,
-        marker="X",
-        c="black",
-        linewidths=1.5,
-        label="Centroid",
+    axes[0].legend()
+    plt.tight_layout()
+    plt.show()
+
+    # 2D PCA plot with 3rd component as continuous color scale
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sc = ax.scatter(
+        pca_coords[:, 0],
+        pca_coords[:, 1],
+        c=pca_coords[:, 2],
+        cmap="viridis",
+        s=35,
+        alpha=0.8,
     )
-
-    plt.title(f"{regime_name}: 2D PCA View of Operating Space ({total_var:.1f}% variance preserved)")
-    plt.xlabel(f"PC 1 ({var1:.1f}% Variance)")
-    plt.ylabel(f"PC 2 ({var2:.1f}% Variance)")
-    plt.legend()
+    plt.colorbar(sc, ax=ax, label="PC3")
+    ax.set_xlabel(f"PC 1 ({explained[0]:.1f}% variance)")
+    ax.set_ylabel(f"PC 2 ({explained[1]:.1f}% variance)")
+    ax.set_title(f"{regime_name}: PCA1 vs PCA2, colored by PC3 ({total_var:.1f}% total variance preserved)")
+    ax.grid(alpha=0.2)
     plt.tight_layout()
     plt.show()
 
@@ -214,7 +231,7 @@ def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH,
     pca_table = pd.DataFrame(
         pca.components_,
         columns=selected_features,
-        index=["PC1", "PC2"],
+        index=["PC1", "PC2", "PC3"],
     )
     print("\nPCA component loadings:")
     print(pca_table.to_string())
