@@ -145,9 +145,10 @@ def plot_correlation_matrix(df, cols=None, title="Correlation Matrix"):
     if cols is None:
         cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
-    corr = df[cols].corr()
+    cols = list(cols) + ['ETAU']
+    corr = df[cols].corr(method= "spearman")
     plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
+    sns.heatmap(corr, annot=True, cmap="coolwarm", center = 0, vmin =-1, vmax = 1, fmt=".2f", linewidths = 0.5)
     plt.title(title)
     plt.tight_layout()
     plt.show()

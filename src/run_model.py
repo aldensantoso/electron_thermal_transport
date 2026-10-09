@@ -227,6 +227,43 @@ def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH,
     plt.tight_layout()
     plt.show()
 
+    # PCA plot with shapes as the 3rd component
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    marker_cycle = ["s", "o", "D", "^"]
+    cluster_labels = sorted(work["Cluster_Label"].unique())
+    marker_map = {
+    label: marker_cycle[i % len(marker_cycle)]
+    for i, label in enumerate(cluster_labels)
+    }
+
+    for cl in cluster_labels:
+        mask = work["Cluster_Label"].eq(cl).to_numpy()
+        ax.scatter(
+            pca_coords[mask, 0],
+            pca_coords[mask, 1],
+            s=30,
+            c=pca_coords[mask, 2],
+            cmap="viridis",
+            marker=marker_map[cl],
+            alpha=0.7,
+            label=f"Cluster {cl}",
+            vmin=pca_coords[:, 2].min(),
+            vmax=pca_coords[:, 2].max(),
+        )
+
+    ax.set_xlabel(f"PC 1 ({explained[0]:.1f}% variance)")
+    ax.set_ylabel(f"PC 2 ({explained[1]:.1f}% variance)")
+    ax.set_title(f"{regime_name}: PCA1 vs PCA2, colored by PC3 ({total_var:.1f}% total variance preserved)")
+    ax.grid(alpha=0.2)
+    plt.colorbar(ax.collections[0], ax=ax, label="PC3")
+    plt.tight_layout()
+    plt.legend()
+    plt.show()
+
+
+
+
     # PCA loadings table
     pca_table = pd.DataFrame(
         pca.components_,
