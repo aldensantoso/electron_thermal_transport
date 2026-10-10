@@ -98,7 +98,7 @@ def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH,
     X_scaled = scaler.fit_transform(X)
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=25)
-    work["Cluster_Label"] = kmeans.fit_predict(X_scaled)
+    work["Cluster_Label"] = kmeans.fit_predict(X_scaled) + 1
 
     sil_score = silhouette_score(X_scaled, work["Cluster_Label"])
     cluster_counts = work["Cluster_Label"].value_counts().sort_index()
@@ -137,7 +137,7 @@ def run_analysis(feature_cols=None, regime_name="controlled", csv_path=CSV_PATH,
 
     # Plot 2: RF prediction of target
     if target_col in work.columns:
-        X_model = work[selected_features + ["Cluster_Label"]].copy()
+        X_model = work[selected_features].copy()
         y_model = work[target_col].astype(float)
 
         X_train, X_test, y_train, y_test = train_test_split(

@@ -110,7 +110,7 @@ def compute_cluster_projection(df, feature_cols=None, n_clusters=4):
     X_pca = pca.fit_transform(X_scaled)
 
     km = KMeans(n_clusters=n_clusters, random_state=42, n_init=25)
-    labels = km.fit_predict(X_scaled)
+    labels = km.fit_predict(X_scaled) + 1
 
     return work, X_pca, labels, scaler, pca, km
 
